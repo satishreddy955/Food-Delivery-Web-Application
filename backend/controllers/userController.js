@@ -1,21 +1,64 @@
+// controllers/authController.js
 import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
 import validator from "validator";
+import nodemailer from "nodemailer";
 import userModel from "../models/userModel.js";
 import otpModel from "../models/otpModel.js";
-import nodemailer from "nodemailer";
 
-// Create JWT token
+// ------------------ UTILITIES ------------------
+
 const createToken = (id) => {
   if (!process.env.JWT_SECRET) throw new Error("JWT_SECRET missing");
   return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: "1d" });
 };
 
+// Single cached transporter (Gmail STARTTLS on 587)
+let _transporter = null;
+let _verified = false;
+
+function getTransporter() {
+  if (_transporter) return _transporter;
+
+  const user = process.env.EMAIL_USER;
+  const pass = process.env.EMAIL_PASS; // Gmail App Password
+
+  if (!user || !pass) {
+    throw new Error("EMAIL_USER/EMAIL_PASS missing");
+  }
+
+  _transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST || "smtp.gmail.com",
+    port: Number(process.env.SMTP_PORT || 587),
+    secure: false,          // false for 587 (STARTTLS)
+    requireTLS: true,       // enforce STARTTLS
+    auth: { user, pass },
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 20000,
+  });
+
+  return _transporter;
+}
+
+async function ensureSmtpReady() {
+  if (_verified) return;
+  const transporter = getTransporter();
+  await transporter.verify();
+  _verified = true;
+}
+
+function sanitizeUser(u) {
+  if (!u) return u;
+  const obj = u.toObject ? u.toObject() : { ...u };
+  delete obj.password;
+  return obj;
+}
+
 // ------------------ AUTH ------------------
 
-// Login
-const loginUser = async (req, res) => {
-  const { email, password } = req.body;
+export const loginUser = async (req, res) => {
+  const { email, password } = req.body || {};
   try {
     const user = await userModel.findOne({ email });
     if (!user) return res.json({ success: false, message: "User does not exist" });
@@ -24,75 +67,60 @@ const loginUser = async (req, res) => {
     if (!isMatch) return res.json({ success: false, message: "Invalid credentials" });
 
     const token = createToken(user._id);
-    res.json({ success: true, token, user });
+    res.json({ success: true, token, user: sanitizeUser(user) });
   } catch (error) {
-    console.error(error);
+    console.error("loginUser error:", error);
     res.json({ success: false, message: "Error" });
   }
 };
 
 // ------------------ REGISTER WITH OTP ------------------
 
-// Step 1: Send OTP for registration
-// Step 1: Send OTP for registration (with cooldown)
-// Step 1: Send OTP for registration (with cooldown)
-const sendRegisterOTP = async (req, res) => {
-  const { email } = req.body;
+// Step 1: Send OTP for registration (with 30s cooldown)
+export const sendRegisterOTP = async (req, res) => {
+  const { email } = req.body || {};
 
   try {
     console.log("📩 Received OTP request for:", email);
 
-    // Validate email
     if (!validator.isEmail(email)) {
       return res.json({ success: false, message: "Invalid email" });
     }
 
-    // Check if user already exists
+    // Already registered?
     const exists = await userModel.findOne({ email });
     if (exists) {
       return res.json({ success: false, message: "User already exists" });
     }
 
-    // Check cooldown (30 seconds)
+    // Cooldown 30s
     const lastOtp = await otpModel.findOne({ email }).sort({ createdAt: -1 });
-
     if (lastOtp?.createdAt) {
-      const timeDiff = Date.now() - lastOtp.createdAt.getTime();
-      if (timeDiff < 30 * 1000) {
-        const waitTime = Math.ceil((30 * 1000 - timeDiff) / 1000);
+      const diff = Date.now() - lastOtp.createdAt.getTime();
+      if (diff < 30_000) {
+        const wait = Math.ceil((30_000 - diff) / 1000);
         return res.json({
           success: false,
-          message: `Please wait ${waitTime} seconds before requesting again`,
+          message: `Please wait ${wait} seconds before requesting again`,
         });
       }
     }
 
-    // Remove old OTPs
+    // Remove old OTPs for this email
     await otpModel.deleteMany({ email });
 
-    // Generate OTP
+    // Generate & save OTP (5 min expiry)
     const otp = Math.floor(100000 + Math.random() * 900000);
-    console.log("Generated OTP:", otp);
-
-    // Save OTP with 5-min expiry
     await otpModel.create({
       email,
       otp,
       expiresAt: new Date(Date.now() + 5 * 60 * 1000),
     });
 
-    // Create email transporter
-    const transporter = nodemailer.createTransport({
-      host: "smtp.gmail.com",
-      port: 465,
-      secure: true,
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS, // Gmail App Password
-      },
-    });
-
     // Send mail
+    await ensureSmtpReady();
+    const transporter = getTransporter();
+
     await transporter.sendMail({
       from: `"Food App" <${process.env.EMAIL_USER}>`,
       to: email,
@@ -101,7 +129,6 @@ const sendRegisterOTP = async (req, res) => {
     });
 
     console.log("✅ OTP email sent successfully to:", email);
-
     res.json({ success: true, message: "OTP sent to email" });
   } catch (error) {
     console.error("❌ Error in sendRegisterOTP:", error);
@@ -110,53 +137,49 @@ const sendRegisterOTP = async (req, res) => {
 };
 
 // Step 2: Verify OTP and Register
-const registerUser = async (req, res) => {
-  const { name, email, password, otp } = req.body;
+export const registerUser = async (req, res) => {
+  const { name, email, password, otp } = req.body || {};
+
   try {
-    // Validate email
     if (!validator.isEmail(email)) {
       return res.json({ success: false, message: "Invalid email" });
     }
 
-    // Check if user already exists
     const exists = await userModel.findOne({ email });
     if (exists) {
       return res.json({ success: false, message: "User already exists" });
     }
 
-    // Find OTP record
-    const record = await otpModel.findOne({ email, otp });
+    const otpNum = Number(otp);
+    if (!Number.isInteger(otpNum)) {
+      return res.json({ success: false, message: "Invalid OTP" });
+    }
+
+    const record = await otpModel.findOne({ email, otp: otpNum });
     if (!record) {
       return res.json({ success: false, message: "Invalid OTP" });
     }
 
-    // Check expiry
     if (record.expiresAt < new Date()) {
       await otpModel.deleteMany({ email });
       return res.json({ success: false, message: "OTP expired" });
     }
 
-    // Validate password
-    if (password.length < 8) {
+    if (!password || password.length < 8) {
       return res.json({ success: false, message: "Password must be 8+ chars" });
     }
 
-    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Create new user
     const newUser = new userModel({ name, email, password: hashedPassword });
     const user = await newUser.save();
 
-    // Delete OTP after successful registration
     await otpModel.deleteMany({ email });
 
-    // Generate token
     const token = createToken(user._id);
-
-    res.json({ success: true, token, user });
+    res.json({ success: true, token, user: sanitizeUser(user) });
   } catch (error) {
-    console.error(error);
+    console.error("registerUser error:", error);
     res.json({ success: false, message: "Error registering user" });
   }
 };
@@ -164,13 +187,14 @@ const registerUser = async (req, res) => {
 // ------------------ PASSWORD RESET ------------------
 
 // Step 1: Send OTP for reset
-const sendResetOTP = async (req, res) => {
-  const { email } = req.body;
+export const sendResetOTP = async (req, res) => {
+  const { email } = req.body || {};
+
   try {
     const user = await userModel.findOne({ email });
     if (!user) return res.json({ success: false, message: "User not found" });
 
-    // Remove old OTPs for this email
+    // Remove old OTPs
     await otpModel.deleteMany({ email });
 
     const otp = Math.floor(100000 + Math.random() * 900000);
@@ -181,13 +205,8 @@ const sendResetOTP = async (req, res) => {
       expiresAt: new Date(Date.now() + 5 * 60 * 1000),
     });
 
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-      },
-    });
+    await ensureSmtpReady();
+    const transporter = getTransporter();
 
     await transporter.sendMail({
       from: `"Food App" <${process.env.EMAIL_USER}>`,
@@ -198,21 +217,26 @@ const sendResetOTP = async (req, res) => {
 
     res.json({ success: true, message: "OTP sent to email" });
   } catch (error) {
-    console.error(error);
+    console.error("sendResetOTP error:", error);
     res.json({ success: false, message: "Error sending OTP" });
   }
 };
 
 // Step 2: Reset Password
-const resetPassword = async (req, res) => {
-  const { email, otp, newPassword } = req.body;
+export const resetPassword = async (req, res) => {
+  const { email, otp, newPassword } = req.body || {};
+
   try {
-    const record = await otpModel.findOne({ email, otp });
+    const otpNum = Number(otp);
+    if (!Number.isInteger(otpNum)) {
+      return res.json({ success: false, message: "Invalid OTP" });
+    }
+
+    const record = await otpModel.findOne({ email, otp: otpNum });
     if (!record) {
       return res.json({ success: false, message: "Invalid OTP" });
     }
 
-    // Check expiry
     if (record.expiresAt < new Date()) {
       await otpModel.deleteMany({ email });
       return res.json({ success: false, message: "OTP expired" });
@@ -221,18 +245,18 @@ const resetPassword = async (req, res) => {
     const user = await userModel.findOne({ email });
     if (!user) return res.json({ success: false, message: "User not found" });
 
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-    user.password = hashedPassword;
+    if (!newPassword || newPassword.length < 8) {
+      return res.json({ success: false, message: "Password must be 8+ chars" });
+    }
+
+    user.password = await bcrypt.hash(newPassword, 10);
     await user.save();
 
-    // Delete OTP after successful reset
     await otpModel.deleteMany({ email });
 
     res.json({ success: true, message: "Password reset successful" });
   } catch (error) {
-    console.error(error);
+    console.error("resetPassword error:", error);
     res.json({ success: false, message: "Error resetting password" });
   }
 };
-
-export { loginUser, sendRegisterOTP, registerUser, sendResetOTP, resetPassword };
