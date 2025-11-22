@@ -1,0 +1,47 @@
+.navbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 24px;
+  background: #fff;
+  border-bottom: 1px solid #ddd;
+}
+
+.logo {
+  height: 40px;
+  cursor: pointer;
+}
+
+.navbar-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.profile { 
+  height: 50px;
+  width: 50px;
+  border-radius:50%;
+  object-fit: cover;
+  border: 2px solid #ff6347; /* tomato/red tone for admin */
+  padding: 2px; /* adds spacing inside border */
+  background-color: #fff; /* ensures clean contrast */
+}
+
+
+
+
+.logout-btn {
+  padding: 6px 14px;
+  background-color: #e63946;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.3s ease;
+}
+
+.logout-btn:hover {
+  background-color: #d62828;
+}

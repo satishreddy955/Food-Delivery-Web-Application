@@ -1,0 +1,86 @@
+.add {
+  /* position: relative; */
+  margin: 40px;
+  cursor: pointer;
+  border-radius: 10px;
+  max-width: 600px;
+  padding: 20px;
+}
+
+.add form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.add-img-upload img {
+  width: 120px;
+  max-width: 100%;
+  cursor: pointer;
+}
+
+.add-product-name,
+.add-product-description {
+  width: 100%;
+}
+
+.add-product-name input,
+.add-product-description textarea {
+  padding: 10px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.add-category-price {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 30px;
+}
+
+.add-category-price select,
+.add-category-price input {
+  max-width: 120px;
+  padding: 10px;
+  box-sizing: border-box;
+}
+
+.add-btn {
+  max-width: 120px;
+  border: none;
+  padding: 10px;
+  background-color: black;
+  color: white;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+.add-btn:hover {
+  background-color: #333;
+}
+
+.flex-col {
+  margin: 10px 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Tablet screens */
+@media (max-width: 1000px) {
+  .add-category-price {
+    gap: 15px;
+  }
+}
+
+/* Mobile screens */
+@media (max-width: 600px) {
+  .add form {
+    gap: 15px;
+  }
+  .add-category-price {
+    flex-direction: column;
+    gap: 10px;
+  }
+  .add-btn {
+    max-width: 100%;
+  }
+}

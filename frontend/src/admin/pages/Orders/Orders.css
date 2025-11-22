@@ -1,0 +1,110 @@
+.order {
+  margin-left: 20px; /* same as sidebar width */
+  padding: 20px 30px;
+  /* width: calc(100% - 250px - 60px); full width - sidebar - side paddings */
+}
+
+.order h3 {
+  margin-bottom: 20px;
+  font-size: 20px;
+  font-weight: 600;
+}
+.order-list {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  
+}
+
+.order-item {
+  display: grid;
+  grid-template-columns: 0.5fr 2fr 1fr 1fr 1fr;
+  align-items: start;
+  gap: 30px;
+  border: 1px solid tomato;
+  border-radius: 8px;
+  padding: 20px;
+  font-size: 14px;
+  color: #505050;
+  background-color: #fff;
+}
+
+.order-item img {
+  width: 60px;
+  height: auto;
+}
+
+.order-item-food,
+.order-item-name {
+  font-weight: 600;
+}
+
+.order-item-name {
+  margin-top: 20px;
+  margin-bottom: 5px;
+}
+
+.order-item-address {
+  margin-bottom: 10px;
+  line-height: 1.4;
+}
+
+.order-item-phone {
+  font-size: 13px;
+  color: #333;
+}
+
+.order-item select {
+  background-color: #ffe8e4;
+  border: 1px solid tomato;
+  border-radius: 6px;
+  width: max(10vw, 120px);
+  padding: 8px 10px;
+  outline: none;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+/* Tablet screens */
+@media (max-width: 1000px) {
+  .order-item {
+    grid-template-columns: 0.5fr 2fr 1fr;
+    gap: 15px;
+    font-size: 13px;
+    padding: 15px;
+  }
+
+  .order-item img {
+    width: 45px;
+  }
+
+  .order-item select {
+    font-size: 12px;
+    padding: 6px 8px;
+  }
+}
+
+/* Mobile screens */
+@media (max-width: 600px) {
+  .order {
+    position: static;
+    width: 100%;
+  }
+
+  .order-item {
+    grid-template-columns: 1fr;
+    text-align: left;
+    gap: 12px;
+    font-size: 14px;
+  }
+
+  .order-item img {
+    width: 50px;
+  }
+
+  .order-item select {
+    width: 100%;
+    font-size: 14px;
+    padding: 8px;
+  }
+}
